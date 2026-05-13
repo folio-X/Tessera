@@ -1,0 +1,22 @@
+# Tessera sub-index weights — v1.0.0
+#
+# These weights are part of the methodology and are versioned with it.
+# Changes require a 30-day public-comment period and an explicit methodology
+# version bump. See GOVERNANCE.md.
+
+composite:
+  frontier_closed: 0.40
+  mid_tier_closed: 0.30
+  open: 0.30
+
+# Blended cost for a single model: input/output mix.
+# Reflects typical agent workload (cold-context-heavy generation).
+blended_cost:
+  input: 0.70
+  output: 0.30
+
+# Index base value on launch date (2026-05-04).
+base_value: 1000.00
+launch_date: 2026-05-04
+fixing_time_utc: "16:00"
+methodology_version: "1.0.0"

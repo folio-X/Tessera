@@ -1,0 +1,91 @@
+# Tessera constituent registry — v1.0.0
+#
+# Each model has:
+#   id            — stable identifier used in snapshots and CSV
+#   display_name  — human-readable name for the website
+#   provider      — pricing source (must match a scraper provider_name)
+#   tier          — one of: frontier_closed, mid_tier_closed, open
+#   added         — ISO date this model entered the index
+#   pricing_url   — canonical public pricing page
+#
+# For OPEN-tier models, `hosts` lists the providers we collect prices from.
+# Per-model price = median across these hosts.
+
+models:
+  # ----- Frontier Closed (TFC) -----
+  - id: openai-gpt-5
+    display_name: "GPT-5"
+    provider: openai
+    tier: frontier_closed
+    added: 2026-05-04
+    pricing_url: https://openai.com/api/pricing
+    api_model_id: gpt-5
+
+  - id: anthropic-claude-opus-4-7
+    display_name: "Claude Opus 4.7"
+    provider: anthropic
+    tier: frontier_closed
+    added: 2026-05-04
+    pricing_url: https://docs.claude.com/en/docs/about-claude/pricing
+    api_model_id: claude-opus-4-7
+
+  - id: google-gemini-2-5-pro
+    display_name: "Gemini 2.5 Pro"
+    provider: google
+    tier: frontier_closed
+    added: 2026-05-04
+    pricing_url: https://ai.google.dev/pricing
+    api_model_id: gemini-2.5-pro
+
+  # ----- Mid-Tier Closed (TMC) -----
+  - id: openai-gpt-5-mini
+    display_name: "GPT-5 mini"
+    provider: openai
+    tier: mid_tier_closed
+    added: 2026-05-04
+    pricing_url: https://openai.com/api/pricing
+    api_model_id: gpt-5-mini
+
+  - id: anthropic-claude-haiku-4-5
+    display_name: "Claude Haiku 4.5"
+    provider: anthropic
+    tier: mid_tier_closed
+    added: 2026-05-04
+    pricing_url: https://docs.claude.com/en/docs/about-claude/pricing
+    api_model_id: claude-haiku-4-5
+
+  - id: google-gemini-2-5-flash
+    display_name: "Gemini 2.5 Flash"
+    provider: google
+    tier: mid_tier_closed
+    added: 2026-05-04
+    pricing_url: https://ai.google.dev/pricing
+    api_model_id: gemini-2.5-flash
+
+  # ----- Open (TOI) -----
+  - id: meta-llama-3-1-70b-instruct
+    display_name: "Llama 3.1 70B Instruct"
+    provider: meta
+    tier: open
+    added: 2026-05-04
+    hosts: [together, fireworks, groq, deepinfra, replicate]
+
+  - id: alibaba-qwen-2-5-72b-instruct
+    display_name: "Qwen 2.5 72B Instruct"
+    provider: alibaba
+    tier: open
+    added: 2026-05-04
+    hosts: [together, fireworks, deepinfra]
+
+  - id: deepseek-v3
+    display_name: "DeepSeek V3"
+    provider: deepseek
+    tier: open
+    added: 2026-05-04
+    hosts: [together, fireworks, deepinfra]
+
+# Notes:
+# - input/output prices are not stored here; they live in the daily snapshot files
+#   under data/snapshots/YYYY-MM-DD.json, sourced fresh each day by the scrapers.
+# - Adding or removing a model requires 14 days' published notice except for
+#   forced deprecations. See GOVERNANCE.md.

@@ -1,0 +1,87 @@
+name: publish-data
+
+# Syncs the canonical data files from this repo into the foliox/folioxwebsite
+# repo (under public/tessera-data/). Triggered when the daily-update workflow
+# commits new data.
+#
+# This requires a fine-grained PAT stored as secrets.WEBSITE_PUSH_TOKEN with
+# write access to folio-X/folioxwebsite.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "data/index/**"
+      - "data/snapshots/**"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.WEBSITE_PUSH_TOKEN != '' }}
+    steps:
+      - name: Check out tessera
+        uses: actions/checkout@v4
+        with:
+          path: tessera
+
+      - name: Check out website
+        uses: actions/checkout@v4
+        with:
+          repository: folio-X/folioxwebsite
+          token: ${{ secrets.WEBSITE_PUSH_TOKEN }}
+          path: folioxwebsite
+
+      - name: Copy data
+        run: |
+          mkdir -p folioxwebsite/public/tessera-data
+          cp tessera/data/index/tessera-daily.csv folioxwebsite/public/tessera-data/tessera-daily.csv
+          # Only ship the last 180 days of snapshots to keep the website lean.
+          mkdir -p folioxwebsite/public/tessera-data/snapshots
+          ls -1 tessera/data/snapshots/*.json | sort | tail -180 \
+            | xargs -I {} cp {} folioxwebsite/public/tessera-data/snapshots/
+
+      - name: Generate current.json
+        run: |
+          cd tessera
+          python -c "
+          import csv, json, pathlib
+          rows = list(csv.DictReader(open('data/index/tessera-daily.csv')))
+          latest, prior = rows[-1], rows[-2]
+          def delta(a, b):
+              return round(float(a) - float(b), 2)
+          summary = {
+              'as_of': latest['date'],
+              'tci': float(latest['tci']),
+              'tfc': float(latest['tfc']),
+              'tmc': float(latest['tmc']),
+              'toi': float(latest['toi']),
+              'tcos_absolute': float(latest['tcos_absolute']),
+              'tcos_percent': float(latest['tcos_percent']),
+              'methodology_version': latest['methodology_version'],
+              'has_stale': latest['has_stale'] == 'true',
+              'delta_1d': {
+                  'tci': delta(latest['tci'], prior['tci']),
+                  'tfc': delta(latest['tfc'], prior['tfc']),
+                  'tmc': delta(latest['tmc'], prior['tmc']),
+                  'toi': delta(latest['toi'], prior['toi']),
+              },
+          }
+          pathlib.Path('../folioxwebsite/public/tessera-data/current.json').write_text(json.dumps(summary, indent=2))
+          "
+
+      - name: Commit and push
+        run: |
+          cd folioxwebsite
+          git config user.name "tessera-bot"
+          git config user.email "tessera@foliox.ai"
+          git add public/tessera-data
+          if git diff --staged --quiet; then
+            echo "no changes"
+          else
+            git commit -m "chore: sync tessera data"
+            git push
+          fi
