@@ -29,7 +29,13 @@ from tessera.models import Model, ModelPrice, Tier, load_models, load_weights
 from tessera.storage import append_daily_csv, default_repo_root, write_snapshot
 
 LAUNCH_DATE = date(2026, 5, 4)
-HISTORY_DAYS = 90
+# Days of pre-launch synthetic backfill (so the website has a 90-day chart
+# from day one). These are labeled `notes: "seed"` in every record.
+PRE_LAUNCH_DAYS = 90
+# Days of post-launch random walk to extend through today. Real scrapers
+# will replace these once the daily-update workflow runs.
+TODAY = date(2026, 5, 14)
+POST_LAUNCH_DAYS = (TODAY - LAUNCH_DATE).days
 
 # Daily volatility (standard deviation of log-return) applied to each model
 # price in the random walk. ~0.4% is realistic for list-price movement —
@@ -97,36 +103,51 @@ def reference_per_host_prices() -> dict[tuple[str, str | None], tuple[float, flo
     return out
 
 
+def _step(
+    current: dict[tuple[str, str | None], tuple[float, float]],
+    reference: dict[tuple[str, str | None], tuple[float, float]],
+    rng: random.Random,
+) -> dict[tuple[str, str | None], tuple[float, float]]:
+    """One day of mean-reverting random-walk steps for every (model, host)."""
+    nxt: dict[tuple[str, str | None], tuple[float, float]] = {}
+    for key, (ref_in, ref_out) in reference.items():
+        cur_in, cur_out = current[key]
+        shock_in = rng.gauss(0.0, DAILY_SIGMA)
+        shock_out = rng.gauss(0.0, DAILY_SIGMA)
+        pulled_in = cur_in + MEAN_REVERSION * (ref_in - cur_in)
+        pulled_out = cur_out + MEAN_REVERSION * (ref_out - cur_out)
+        new_in = round(max(0.05, pulled_in * (1.0 + shock_in)), 4)
+        new_out = round(max(0.05, pulled_out * (1.0 + shock_out)), 4)
+        nxt[key] = (new_in, new_out)
+    return nxt
+
+
 def build_walk(
     reference: dict[tuple[str, str | None], tuple[float, float]],
     rng: random.Random,
 ) -> dict[date, dict[tuple[str, str | None], tuple[float, float]]]:
-    """Build a per-(model, host) random walk over the full window.
+    """Build the full per-(model, host) price walk.
 
-    The walk starts on launch day at the reference values, then walks BACKWARD
-    in time, applying mean-reverting random returns. This guarantees launch
-    day = reference exactly, while older days have natural-looking noise.
+    The walk is anchored on launch day at the exact reference values, walks
+    backward in time for PRE_LAUNCH_DAYS days (synthetic backfill), and
+    forward in time for POST_LAUNCH_DAYS days (real-launched series wandering
+    away from 1000). Both halves use the same mean-reverting random walk so
+    the series has consistent texture.
     """
     series: dict[date, dict[tuple[str, str | None], tuple[float, float]]] = {}
-    current: dict[tuple[str, str | None], tuple[float, float]] = dict(reference)
-    series[LAUNCH_DATE] = dict(current)
+    series[LAUNCH_DATE] = dict(reference)
 
-    for offset in range(1, HISTORY_DAYS + 1):
-        next_day_prices: dict[tuple[str, str | None], tuple[float, float]] = {}
-        for key, (ref_in, ref_out) in reference.items():
-            cur_in, cur_out = current[key]
-            shock_in = rng.gauss(0.0, DAILY_SIGMA)
-            shock_out = rng.gauss(0.0, DAILY_SIGMA)
-            # Pull each price back toward its reference at a small rate so a
-            # 90-day random walk doesn't wander 30% off.
-            pulled_in = cur_in + MEAN_REVERSION * (ref_in - cur_in)
-            pulled_out = cur_out + MEAN_REVERSION * (ref_out - cur_out)
-            new_in = round(max(0.05, pulled_in * (1.0 + shock_in)), 4)
-            new_out = round(max(0.05, pulled_out * (1.0 + shock_out)), 4)
-            next_day_prices[key] = (new_in, new_out)
-        date_for = LAUNCH_DATE - timedelta(days=offset)
-        series[date_for] = next_day_prices
-        current = next_day_prices
+    # Walk BACKWARD from launch day to fill the pre-launch chart.
+    current = dict(reference)
+    for offset in range(1, PRE_LAUNCH_DAYS + 1):
+        current = _step(current, reference, rng)
+        series[LAUNCH_DATE - timedelta(days=offset)] = current
+
+    # Walk FORWARD from launch day to today.
+    current = dict(reference)
+    for offset in range(1, POST_LAUNCH_DAYS + 1):
+        current = _step(current, reference, rng)
+        series[LAUNCH_DATE + timedelta(days=offset)] = current
 
     return series
 
@@ -189,9 +210,8 @@ def main() -> None:
     factors_path.parent.mkdir(parents=True, exist_ok=True)
     factors_path.write_text(json.dumps(launch_factors, indent=2))
 
-    # Walk forward from oldest to newest so the CSV ends up sorted.
-    for offset in range(HISTORY_DAYS, -1, -1):
-        as_of = LAUNCH_DATE - timedelta(days=offset)
+    # Emit oldest → newest so the CSV ends up sorted.
+    for as_of in sorted(walk.keys()):
         prices = prices_for_day(models, as_of, walk)
         snapshot = calculator.compute(prices, as_of, scale_factors=launch_factors)
         write_snapshot(snapshot)
