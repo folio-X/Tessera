@@ -133,9 +133,21 @@ For v1, methodology decisions are made by FolioX Inc. A formal methodology commi
 
 ---
 
-## 5. Quality adjustment (deferred to v2)
+## 5. Quality adjustment (v2 target)
 
-For v1, Tessera publishes raw cost-per-token. For v2 (target: six months post-launch), Tessera will publish quality-adjusted indexes using a methodology to be specified — likely incorporating standardized benchmarks (MMLU, GPQA, HumanEval, or successor benchmarks). Until v2 is published, the v1 raw-cost methodology is canonical.
+v1 publishes raw cost-per-token because that figure is unambiguous and verifiable. **v2 will publish a parallel quality-adjusted index** using a weighted composite, shipped through the normal 30-day public-comment process. The v1 raw-cost index stays canonical until v2 ships; the two will then coexist as separately published values.
+
+The proposed v2 composite:
+
+| Component | Weight | Examples | Why |
+|---|---:|---|---|
+| Benchmark basket | **50%** | MMLU · HumanEval · MATH · MT-Bench | Reproducible, daily-computable, comparable across labs |
+| Human preference | **30%** | Arena Elo or equivalent | Captures real-world perceived quality that benchmarks miss |
+| Cost efficiency | **20%** | Output tokens per $ on standardized tasks | Keeps quality anchored to actual cost-of-completion, not abstract scores |
+
+**Why a blend, not a single score?** Each component has a known failure mode. Benchmarks go stale and get gamed. Arena scores are slow and reflect chat-style use disproportionately. Cost efficiency rewards verbosity. A documented weighted composite is more defensible than any single score — and the weights themselves are versioned alongside the methodology.
+
+**Target ship date:** 2026-11-01 (six months post-launch).
 
 ---
 
