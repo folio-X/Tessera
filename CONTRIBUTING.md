@@ -20,7 +20,7 @@ Thanks for your interest in contributing. Tessera is a public good, and the cred
 ## Development setup
 
 ```bash
-git clone https://github.com/folio-X/tessera
+git clone https://github.com/folio-X/Tessera
 cd tessera
 python -m venv .venv
 source .venv/bin/activate

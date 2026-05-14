@@ -46,8 +46,8 @@ tessera = "tessera.cli:main"
 
 [project.urls]
 Homepage = "https://foliox.ai/tessera"
-Repository = "https://github.com/folio-X/tessera"
-Issues = "https://github.com/folio-X/tessera/issues"
+Repository = "https://github.com/folio-X/Tessera"
+Issues = "https://github.com/folio-X/Tessera/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tessera"]
