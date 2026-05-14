@@ -5,6 +5,15 @@ plausible-looking time series for the website to render against until live
 scrapers are running. Every row is clearly marked as seed data in the
 snapshot's `notes` field.
 
+Methodology of the seed:
+  - Launch day (offset 0) uses the pristine reference prices below, so each
+    sub-index lands at exactly 1000.00 on the fixing day.
+  - For days BEFORE launch we generate a random walk *anchored* to those
+    reference prices. There is no built-in drift — the series wanders up and
+    down around the reference but doesn't trend, because at index launch we
+    have no real history to claim a direction for.
+  - The walk uses a fixed seed so the seed file is reproducible.
+
 Run:
     python scripts/seed_historical.py
 """
@@ -22,8 +31,20 @@ from tessera.storage import append_daily_csv, default_repo_root, write_snapshot
 LAUNCH_DATE = date(2026, 5, 4)
 HISTORY_DAYS = 90
 
+# Daily volatility (standard deviation of log-return) applied to each model
+# price in the random walk. ~0.4% is realistic for list-price movement —
+# providers don't reprice every day, but the cross-section of constituents
+# combined gives the index this much daily flicker.
+DAILY_SIGMA = 0.004
+
+# Mean-reversion strength toward the launch-day reference. 0.0 = pure random
+# walk (can drift arbitrarily far), 1.0 = always at reference. A small value
+# keeps the walk realistic but prevents the 90-day endpoint from being
+# unrealistically far from launch.
+MEAN_REVERSION = 0.04
+
 # Reference prices on launch day (USD per million tokens). Manually researched
-# from current public pricing pages and labelled as seed in the snapshots.
+# from current public pricing pages.
 LAUNCH_PRICES: dict[str, dict[str, float | dict[str, dict[str, float]]]] = {
     # Frontier Closed
     "openai-gpt-5": {"input": 1.25, "output": 10.00},
@@ -60,58 +81,90 @@ LAUNCH_PRICES: dict[str, dict[str, float | dict[str, dict[str, float]]]] = {
 }
 
 
+def reference_per_host_prices() -> dict[tuple[str, str | None], tuple[float, float]]:
+    """Flatten LAUNCH_PRICES into a (model_id, host) → (input, output) dict."""
+    out: dict[tuple[str, str | None], tuple[float, float]] = {}
+    for model_id, record in LAUNCH_PRICES.items():
+        if "hosts" in record:
+            hosts = record["hosts"]
+            assert isinstance(hosts, dict)
+            for host, p in hosts.items():
+                out[(model_id, host)] = (p["input"], p["output"])
+        else:
+            input_p = float(record["input"])  # type: ignore[arg-type]
+            output_p = float(record["output"])  # type: ignore[arg-type]
+            out[(model_id, None)] = (input_p, output_p)
+    return out
+
+
+def build_walk(
+    reference: dict[tuple[str, str | None], tuple[float, float]],
+    rng: random.Random,
+) -> dict[date, dict[tuple[str, str | None], tuple[float, float]]]:
+    """Build a per-(model, host) random walk over the full window.
+
+    The walk starts on launch day at the reference values, then walks BACKWARD
+    in time, applying mean-reverting random returns. This guarantees launch
+    day = reference exactly, while older days have natural-looking noise.
+    """
+    series: dict[date, dict[tuple[str, str | None], tuple[float, float]]] = {}
+    current: dict[tuple[str, str | None], tuple[float, float]] = dict(reference)
+    series[LAUNCH_DATE] = dict(current)
+
+    for offset in range(1, HISTORY_DAYS + 1):
+        next_day_prices: dict[tuple[str, str | None], tuple[float, float]] = {}
+        for key, (ref_in, ref_out) in reference.items():
+            cur_in, cur_out = current[key]
+            shock_in = rng.gauss(0.0, DAILY_SIGMA)
+            shock_out = rng.gauss(0.0, DAILY_SIGMA)
+            # Pull each price back toward its reference at a small rate so a
+            # 90-day random walk doesn't wander 30% off.
+            pulled_in = cur_in + MEAN_REVERSION * (ref_in - cur_in)
+            pulled_out = cur_out + MEAN_REVERSION * (ref_out - cur_out)
+            new_in = round(max(0.05, pulled_in * (1.0 + shock_in)), 4)
+            new_out = round(max(0.05, pulled_out * (1.0 + shock_out)), 4)
+            next_day_prices[key] = (new_in, new_out)
+        date_for = LAUNCH_DATE - timedelta(days=offset)
+        series[date_for] = next_day_prices
+        current = next_day_prices
+
+    return series
+
+
 def prices_for_day(
     models: list[Model],
-    day_offset: int,
-    *,
-    rng: random.Random,
+    as_of: date,
+    walk: dict[date, dict[tuple[str, str | None], tuple[float, float]]],
 ) -> list[ModelPrice]:
-    """Generate a plausible per-model price record for the given day offset.
-
-    Day 0 = launch day (uses the reference prices verbatim). Earlier days drift
-    upward slightly to create a downward-sloping series; jitter is small to
-    keep the chart readable but visible.
-    """
-    # Launch day uses pristine reference prices so the index lands at 1000.00
-    # exactly on day 0. Older days get drift + jitter so the chart has texture.
-    is_launch = day_offset == 0
-    drift = 1.0 + 0.0008 * day_offset
-    observed = datetime.combine(
-        LAUNCH_DATE - timedelta(days=day_offset),
-        datetime.min.time(),
-        tzinfo=UTC,
-    ).replace(hour=16)
+    """Build ModelPrice records for a given fixing date from the prebuilt walk."""
+    observed = datetime.combine(as_of, datetime.min.time(), tzinfo=UTC).replace(hour=16)
+    day_prices = walk[as_of]
     prices: list[ModelPrice] = []
 
     for model in models:
-        record = LAUNCH_PRICES[model.id]
         if model.tier == Tier.OPEN:
-            hosts = record["hosts"]  # type: ignore[index]
-            assert isinstance(hosts, dict)
-            for host, p in hosts.items():
-                jitter = 1.0 if is_launch else 1.0 + (rng.random() - 0.5) * 0.015
+            for host in model.hosts:
+                in_p, out_p = day_prices[(model.id, host)]
                 prices.append(
                     ModelPrice(
                         model_id=model.id,
                         provider=model.provider,
                         host=host,
-                        input_per_million=round(p["input"] * drift * jitter, 4),
-                        output_per_million=round(p["output"] * drift * jitter, 4),
+                        input_per_million=in_p,
+                        output_per_million=out_p,
                         source_url=f"https://{host}.ai/pricing",
                         observed_at=observed,
                         notes="seed",
                     )
                 )
         else:
-            input_p = record["input"]  # type: ignore[index]
-            output_p = record["output"]  # type: ignore[index]
-            jitter = 1.0 if is_launch else 1.0 + (rng.random() - 0.5) * 0.01
+            in_p, out_p = day_prices[(model.id, None)]
             prices.append(
                 ModelPrice(
                     model_id=model.id,
                     provider=model.provider,
-                    input_per_million=round(float(input_p) * drift * jitter, 4),
-                    output_per_million=round(float(output_p) * drift * jitter, 4),
+                    input_per_million=in_p,
+                    output_per_million=out_p,
                     source_url=f"https://{model.provider}.com/api/pricing",
                     observed_at=observed,
                     notes="seed",
@@ -126,7 +179,10 @@ def main() -> None:
     calculator = IndexCalculator(models, weights)
     rng = random.Random(42)
 
-    launch_prices = prices_for_day(models, day_offset=0, rng=rng)
+    reference = reference_per_host_prices()
+    walk = build_walk(reference, rng)
+
+    launch_prices = prices_for_day(models, LAUNCH_DATE, walk)
     launch_factors = calculator.compute_launch_scale_factors(launch_prices)
 
     factors_path = default_repo_root() / "data" / "index" / "launch-scale-factors.json"
@@ -134,9 +190,9 @@ def main() -> None:
     factors_path.write_text(json.dumps(launch_factors, indent=2))
 
     # Walk forward from oldest to newest so the CSV ends up sorted.
-    for day_offset in range(HISTORY_DAYS, -1, -1):
-        prices = prices_for_day(models, day_offset, rng=rng)
-        as_of = LAUNCH_DATE - timedelta(days=day_offset)
+    for offset in range(HISTORY_DAYS, -1, -1):
+        as_of = LAUNCH_DATE - timedelta(days=offset)
+        prices = prices_for_day(models, as_of, walk)
         snapshot = calculator.compute(prices, as_of, scale_factors=launch_factors)
         write_snapshot(snapshot)
         append_daily_csv(snapshot)
