@@ -47,9 +47,11 @@ Identical methodology to TFC, applied to the basket of mid-tier closed models (e
 
 ### 1.4 Tessera Open Index (TOI)
 
-A basket of open-weight models. For each constituent, the per-model price is the **median across all hosting providers** in the index (currently Together AI, Fireworks AI, Groq, DeepInfra, Replicate). Models are equal-weighted within the basket.
+A basket of open-weight models. For each constituent, the per-model price is the **median across all hosting providers** in the index (currently Together AI, Fireworks AI, Groq, DeepInfra, Replicate, and Hugging Face Inference Endpoints). Models are equal-weighted within the basket.
 
 Using the median across hosts insulates the index from a single host's promotional pricing or outage.
+
+**Constituent-selection reference: the Hugging Face Hub.** When deciding which open-weight models to include, Tessera references the [Hugging Face Hub](https://huggingface.co/models) — specifically, models that are (a) trending or have substantial download volume in the prior 30 days, (b) have permissive licenses suitable for commercial hosting, and (c) are independently hosted by at least three index providers above. The Hub is a reference, not an authority: a model's appearance on a Hub leaderboard does not by itself qualify it for inclusion, and inclusion still requires the 30-day general-availability rule in §3.
 
 ### 1.5 Tessera Closed-Open Spread (TCOS)
 

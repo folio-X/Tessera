@@ -68,6 +68,8 @@ LAUNCH_PRICES: dict[str, dict[str, float | dict[str, dict[str, float]]]] = {
             "groq": {"input": 0.59, "output": 0.79},
             "deepinfra": {"input": 0.35, "output": 0.40},
             "replicate": {"input": 0.65, "output": 2.75},
+            # Hugging Face Endpoints — effective $/M from A100 80GB @ ~$4/hr, 60 tok/s
+            "huggingface": {"input": 0.92, "output": 0.92},
         }
     },
     "alibaba-qwen-2-5-72b-instruct": {
@@ -75,6 +77,7 @@ LAUNCH_PRICES: dict[str, dict[str, float | dict[str, dict[str, float]]]] = {
             "together": {"input": 1.20, "output": 1.20},
             "fireworks": {"input": 0.90, "output": 0.90},
             "deepinfra": {"input": 0.35, "output": 0.40},
+            "huggingface": {"input": 1.01, "output": 1.01},
         }
     },
     "deepseek-v3": {
@@ -82,6 +85,7 @@ LAUNCH_PRICES: dict[str, dict[str, float | dict[str, dict[str, float]]]] = {
             "together": {"input": 1.25, "output": 1.25},
             "fireworks": {"input": 0.90, "output": 0.90},
             "deepinfra": {"input": 0.49, "output": 0.89},
+            "huggingface": {"input": 1.23, "output": 1.23},
         }
     },
 }

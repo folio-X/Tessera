@@ -68,21 +68,24 @@ models:
     provider: meta
     tier: open
     added: 2026-05-04
-    hosts: [together, fireworks, groq, deepinfra, replicate]
+    # Hugging Face Inference Endpoints uses pay-as-you-go compute pricing
+    # rather than per-token; the scraper computes an effective $/M-token
+    # rate from the published hardware rates. See scrapers/huggingface.py.
+    hosts: [together, fireworks, groq, deepinfra, replicate, huggingface]
 
   - id: alibaba-qwen-2-5-72b-instruct
     display_name: "Qwen 2.5 72B Instruct"
     provider: alibaba
     tier: open
     added: 2026-05-04
-    hosts: [together, fireworks, deepinfra]
+    hosts: [together, fireworks, deepinfra, huggingface]
 
   - id: deepseek-v3
     display_name: "DeepSeek V3"
     provider: deepseek
     tier: open
     added: 2026-05-04
-    hosts: [together, fireworks, deepinfra]
+    hosts: [together, fireworks, deepinfra, huggingface]
 
 # Notes:
 # - input/output prices are not stored here; they live in the daily snapshot files

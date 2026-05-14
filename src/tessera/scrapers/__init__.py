@@ -12,6 +12,7 @@ from .deepinfra import DeepInfraScraper
 from .fireworks import FireworksScraper
 from .google import GoogleScraper
 from .groq import GroqScraper
+from .huggingface import HuggingFaceScraper
 from .openai import OpenAIScraper
 from .replicate import ReplicateScraper
 from .together import TogetherScraper
@@ -25,6 +26,7 @@ ALL_SCRAPERS: dict[str, type[BaseScraper]] = {
     "groq": GroqScraper,
     "deepinfra": DeepInfraScraper,
     "replicate": ReplicateScraper,
+    "huggingface": HuggingFaceScraper,
 }
 
 __all__ = ["ALL_SCRAPERS", "BaseScraper", "ScraperFailure"]
